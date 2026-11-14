@@ -17,6 +17,7 @@ from .schemas import EvaluationResult, VulnerabilityFinding
 logger = logging.getLogger(__name__)
 
 DEFAULT_SOCKET_PATH = os.environ.get("UDS_SOCKET_PATH", "/run/oakai/eval.sock")
+DEFAULT_DOWNSTREAM_SOCKET = os.environ.get("UDS_DOWNSTREAM_SOCKET", "")
 
 
 class UdsEvaluationServer:
@@ -25,11 +26,13 @@ class UdsEvaluationServer:
     def __init__(
         self,
         socket_path: str = DEFAULT_SOCKET_PATH,
+        downstream_socket: str = DEFAULT_DOWNSTREAM_SOCKET,
         epss_client: EpssClient | None = None,
         memory_checker: MemoryChecker | None = None,
         evaluator: VulnerabilityEvaluator | None = None,
     ):
         self.socket_path = socket_path
+        self.downstream_socket = downstream_socket
         self.epss_client = epss_client or EpssClient()
         self.memory_checker = memory_checker or MemoryChecker()
         self.evaluator = evaluator or VulnerabilityEvaluator()
@@ -128,6 +131,9 @@ class UdsEvaluationServer:
                 conn.sendall(json.dumps(response_payload, indent=2).encode("utf-8"))
                 logger.info("Evaluated %d vulnerabilities successfully", len(results))
 
+                if self.downstream_socket and os.path.exists(self.downstream_socket):
+                    self._forward_to_patch_analyst(response_payload)
+
             except (
                 json.JSONDecodeError,
                 ValidationError,
@@ -139,6 +145,24 @@ class UdsEvaluationServer:
                 logger.error("Error processing request: %s", err)
                 err_response = {"error": str(err)}
                 conn.sendall(json.dumps(err_response).encode("utf-8"))
+
+    def _forward_to_patch_analyst(self, payload: list[dict]):
+        """Forward evaluated findings to vuln-patch-analyst over UDS."""
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.connect(self.downstream_socket)
+                client.sendall(json.dumps(payload).encode("utf-8"))
+                client.shutdown(socket.SHUT_WR)
+                client.recv(8192)
+                logger.info(
+                    "Forwarded %d evaluated findings to patch analyst", len(payload)
+                )
+        except OSError as err:
+            logger.warning(
+                "Downstream patch analyst socket %s unreachable: %s",
+                self.downstream_socket,
+                err,
+            )
 
     def _get_peer_credentials(self, conn: socket.socket) -> str:
         """Inspect SO_PEERCRED on Linux to log the caller PID, UID, and GID."""
