@@ -28,7 +28,5 @@ ENV UDS_SOCKET_PATH="/run/oakai/eval.sock"
 RUN mkdir -p /run/oakai && chown -R vuln-eval:oakai /run/oakai && chmod 770 /run/oakai
 
 USER vuln-eval:oakai
-
-EXPOSE 0
 ENTRYPOINT ["vuln-evaluator"]
 CMD ["serve"]
