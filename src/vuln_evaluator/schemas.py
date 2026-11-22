@@ -58,6 +58,13 @@ class MemoryCheckResult(BaseModel):
     mapped_paths: list[str] = Field(
         default_factory=list, description="Resolved filesystem paths mapped into memory"
     )
+    memory_visibility: str = Field(
+        default="partial",
+        description=(
+            "'full' when a fresh root-owned host memory snapshot (oakai-memscan) covered "
+            "all processes; 'partial' when only processes visible to this rootless pod were checked"
+        ),
+    )
 
 
 class EvaluationResult(BaseModel):
@@ -70,6 +77,7 @@ class EvaluationResult(BaseModel):
     epss_score: float
     epss_percentile: float
     in_memory: bool
+    memory_visibility: str = "partial"
     matching_pids: list[int]
     threat_level: str = Field(
         ..., description="Calculated threat rating: CRITICAL, HIGH, MEDIUM, LOW"

@@ -16,7 +16,9 @@ from .schemas import EvaluationResult, VulnerabilityFinding
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SOCKET_PATH = os.environ.get("UDS_SOCKET_PATH", "/run/oakai/eval.sock")
+DEFAULT_SOCKET_PATH = os.environ.get(
+    "UDS_EVAL_SOCKET", os.environ.get("UDS_SOCKET_PATH", "/run/oakai/eval.sock")
+)
 DEFAULT_DOWNSTREAM_SOCKET = os.environ.get("UDS_DOWNSTREAM_SOCKET", "")
 
 
@@ -57,7 +59,9 @@ class UdsEvaluationServer:
 
         # Configure socket permissions to allow group access (0660) within the shared oakai group
         try:
+            # fmt: off
             os.chmod(self.socket_path, 0o660)  # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
+            # fmt: on
         except OSError as err:
             logger.warning("Could not set socket permissions to 0660: %s", err)
 
