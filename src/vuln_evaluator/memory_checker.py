@@ -39,7 +39,9 @@ class MemoryChecker:
             data = json.loads(self.memmap_path.read_text(encoding="utf-8"))
             age = time.time() - float(data.get("epoch", 0))
             if age > self.memmap_max_age:
-                logger.warning("memscan snapshot is stale (%.0fs old); visibility is partial", age)
+                logger.warning(
+                    "memscan snapshot is stale (%.0fs old); visibility is partial", age
+                )
                 return None
             if not isinstance(data.get("files"), dict):
                 return None

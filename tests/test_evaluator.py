@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+
 from vuln_evaluator.epss_client import EpssClient
 from vuln_evaluator.evaluator import VulnerabilityEvaluator
 from vuln_evaluator.memory_checker import MemoryChecker
@@ -211,7 +212,9 @@ def test_memory_checker_uses_root_snapshot_for_unreadable_processes(tmp_path):
     empty_proc.mkdir()
     dpkg_info = tmp_path / "info"
     dpkg_info.mkdir()
-    (dpkg_info / "zlib1g:arm64.list").write_text("/usr/lib/aarch64-linux-gnu/libz.so.1.2.13\n")
+    (dpkg_info / "zlib1g:arm64.list").write_text(
+        "/usr/lib/aarch64-linux-gnu/libz.so.1.2.13\n"
+    )
 
     checker = MemoryChecker(
         proc_root=str(empty_proc), dpkg_info_dir=str(dpkg_info), memmap_path=str(snap)
@@ -287,4 +290,3 @@ def test_evaluator_passes_strict_json_schema_and_ordinal_percentile(mocker):
     assert sent["format"]["required"] == ["threat_level", "rationale"]
     assert "0.68%" in sent["prompt"]
     assert "53th percentile" in sent["prompt"]
-

@@ -59,7 +59,9 @@ class UdsEvaluationServer:
 
         # Configure socket permissions to allow group access (0660) within the shared oakai group
         try:
-            os.chmod(self.socket_path, 0o660)  # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
+            os.chmod(
+                self.socket_path, 0o660
+            )  # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
         except OSError as err:
             logger.warning("Could not set socket permissions to 0660: %s", err)
 

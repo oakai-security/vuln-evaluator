@@ -105,11 +105,11 @@ class VulnerabilityEvaluator:
         )
         det_level, _ = self._deterministic_fallback(finding, epss, memory)
         epss_prob_pct = f"{epss.epss_score * 100:.2f}%"
-        percentile_ordinal = f"{int(round(epss.percentile * 100))}th percentile"
+        percentile_ordinal = f"{round(epss.percentile * 100)}th percentile"
         prompt = f"""You are a precise cybersecurity risk evaluator on a hardened Debian 12 Linux host. Write a 1-2 sentence technical rationale explaining the verified threat assessment below:
 - CVE ID: {finding.cve_id}
 - Package: {finding.package_name} (Installed: {finding.installed_version})
-- Description: {finding.description or 'OS package vulnerability'}
+- Description: {finding.description or "OS package vulnerability"}
 - Base CVSS: {finding.cvss_base}
 - 30-Day Exploit Probability (EPSS): {epss_prob_pct} (Relative Rank: {percentile_ordinal} among all CVEs)
 - Host Memory Status: {ram_state}
@@ -148,18 +148,29 @@ Rules:
 
             parsed = json.loads(clean_json)
             threat_level = str(parsed.get("threat_level", "")).upper().strip()
-            rationale = str(parsed.get("rationale", "")).strip().replace("\u2014", " - ")
+            rationale = (
+                str(parsed.get("rationale", "")).strip().replace("\u2014", " - ")
+            )
 
             valid_levels = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
             if threat_level in valid_levels and rationale:
                 # Enforce deterministic risk invariants on threat_level while keeping LLM rationale
-                if not memory.in_memory and epss.epss_score < 0.05 and threat_level == "CRITICAL":
+                if (
+                    not memory.in_memory
+                    and epss.epss_score < 0.05
+                    and threat_level == "CRITICAL"
+                ):
                     threat_level = "LOW"
                 elif memory.in_memory and epss.epss_score >= 0.05:
                     threat_level = "CRITICAL"
                 return threat_level, rationale
 
-        except (requests.RequestException, json.JSONDecodeError, KeyError, ValueError) as err:
+        except (
+            requests.RequestException,
+            json.JSONDecodeError,
+            KeyError,
+            ValueError,
+        ) as err:
             logger.warning(
                 "Ollama synthesis unavailable or returned non-JSON (%s); using deterministic engine",
                 err,
