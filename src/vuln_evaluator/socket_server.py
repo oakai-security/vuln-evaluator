@@ -16,7 +16,9 @@ from .schemas import EvaluationResult, VulnerabilityFinding
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SOCKET_PATH = os.environ.get("UDS_SOCKET_PATH", "/run/oakai/eval.sock")
+DEFAULT_SOCKET_PATH = os.environ.get(
+    "UDS_EVAL_SOCKET", os.environ.get("UDS_SOCKET_PATH", "/run/oakai/eval.sock")
+)
 DEFAULT_DOWNSTREAM_SOCKET = os.environ.get("UDS_DOWNSTREAM_SOCKET", "")
 
 

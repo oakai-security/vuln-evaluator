@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-
 from vuln_evaluator.epss_client import EpssClient
 from vuln_evaluator.evaluator import VulnerabilityEvaluator
 from vuln_evaluator.memory_checker import MemoryChecker
@@ -192,3 +191,100 @@ def test_uds_socket_roundtrip(mocker):
         assert len(results) == 1
         assert results[0]["cve_id"] == "CVE-2024-38077"
         assert results[0]["threat_level"] in {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+
+
+def test_memory_checker_uses_root_snapshot_for_unreadable_processes(tmp_path):
+    """A library mapped only by a root-owned PID must be found via the memscan snapshot."""
+    import json
+    import time
+
+    snap = tmp_path / "memmap.json"
+    snap.write_text(
+        json.dumps(
+            {
+                "epoch": time.time(),
+                "files": {"/usr/lib/aarch64-linux-gnu/libz.so.1.2.13": [4242]},
+            }
+        )
+    )
+    empty_proc = tmp_path / "proc"
+    empty_proc.mkdir()
+    dpkg_info = tmp_path / "info"
+    dpkg_info.mkdir()
+    (dpkg_info / "zlib1g:arm64.list").write_text("/usr/lib/aarch64-linux-gnu/libz.so.1.2.13\n")
+
+    checker = MemoryChecker(
+        proc_root=str(empty_proc), dpkg_info_dir=str(dpkg_info), memmap_path=str(snap)
+    )
+    res = checker.check_package_in_memory("zlib1g")
+    assert res.in_memory is True
+    assert res.matching_pids == [4242]
+    assert res.memory_visibility == "full"
+
+
+def test_memory_checker_partial_visibility_without_snapshot(tmp_path):
+    """No snapshot means a negative result is only PARTIAL visibility."""
+    empty_proc = tmp_path / "proc"
+    empty_proc.mkdir()
+    checker = MemoryChecker(
+        proc_root=str(empty_proc),
+        dpkg_info_dir=str(tmp_path),
+        memmap_path=str(tmp_path / "missing.json"),
+    )
+    res = checker.check_package_in_memory("zlib1g")
+    assert res.in_memory is False
+    assert res.memory_visibility == "partial"
+
+
+def test_memory_checker_stale_snapshot_is_ignored(tmp_path):
+    """A snapshot older than the max age must not grant full visibility."""
+    import json
+    import time
+
+    snap = tmp_path / "memmap.json"
+    snap.write_text(json.dumps({"epoch": time.time() - 99999, "files": {}}))
+    empty_proc = tmp_path / "proc"
+    empty_proc.mkdir()
+    checker = MemoryChecker(
+        proc_root=str(empty_proc), dpkg_info_dir=str(tmp_path), memmap_path=str(snap)
+    )
+    assert checker.check_package_in_memory("zlib1g").memory_visibility == "partial"
+
+
+def test_evaluator_passes_strict_json_schema_and_ordinal_percentile(mocker):
+    """Verify Ollama request uses strict JSON schema and unambiguous EPSS vs percentile formatting."""
+    captured_payloads = []
+
+    def fake_post(url, json=None, timeout=60):
+        captured_payloads.append(json)
+        resp = mocker.Mock()
+        resp.raise_for_status = mocker.Mock()
+        resp.json.return_value = {
+            "response": '{"threat_level": "LOW", "rationale": "Not loaded in RAM with 0.68% 30-day exploit probability."}'
+        }
+        return resp
+
+    mocker.patch("requests.post", side_effect=fake_post)
+
+    evaluator = VulnerabilityEvaluator(ollama_url="http://127.0.0.1:11434")
+    finding = VulnerabilityFinding(
+        cve_id="CVE-2026-76844",
+        package_name="zlib1g",
+        installed_version="1:1.2.13",
+        cvss_base=7.5,
+    )
+    epss = EpssData(cve_id="CVE-2026-76844", epss_score=0.00682, percentile=0.5307)
+    mem = MemoryCheckResult(
+        in_memory=False, matching_pids=[], mapped_paths=[], memory_visibility="full"
+    )
+
+    res = evaluator.evaluate(finding, epss, mem)
+    assert res.threat_level == "LOW"
+    assert "0.68%" in res.verdict_rationale
+    assert len(captured_payloads) == 1
+    sent = captured_payloads[0]
+    assert isinstance(sent["format"], dict)
+    assert sent["format"]["required"] == ["threat_level", "rationale"]
+    assert "0.68%" in sent["prompt"]
+    assert "53th percentile" in sent["prompt"]
+
